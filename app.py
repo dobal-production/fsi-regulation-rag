@@ -1,5 +1,14 @@
 import streamlit as st
+import logging
+import os
 from utils.bedrock_lib import BedrockRAG
+
+# 로깅 설정
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 PAGE_TITLE = "한국금융규제 관련 Q&A 채팅봇"
 
@@ -7,7 +16,8 @@ PAGE_TITLE = "한국금융규제 관련 Q&A 채팅봇"
 st.set_page_config(
     page_title=PAGE_TITLE,
     page_icon="🤖",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
 # 모델 옵션 정의
@@ -105,6 +115,27 @@ with st.sidebar:
     st.session_state.max_results = max_results
 
 
+def extract_filename_from_location(location):
+    """S3 Location에서 파일명을 추출하는 메소드"""
+    if location and 's3Location' in location:
+        s3_uri = location['s3Location'].get('uri', '')
+        if s3_uri:
+            return s3_uri.split('/')[-1]
+    return "알 수 없는 파일"
+
+def display_reference_documents(kb_results):
+    """참고 문서 및 인용 정보를 표시하는 메소드"""
+    with st.expander(f"📚 참고 문서 ({len(kb_results)}개)"):
+        for i, result in enumerate(kb_results, 1):
+            location = result.get('location', {})
+            filename = extract_filename_from_location(location)
+            
+            st.write(f"**문서 {i}:** `{filename}` (점수: {result.get('score', 'N/A'):.3f})")
+            st.write(f"출처: {filename}")
+            doc_content = result["content"]
+            st.write(doc_content[:300] + "..." if len(doc_content) > 300 else doc_content)
+            st.divider()
+
 # 메인 채팅 인터페이스
 st.title(f"🤖 {PAGE_TITLE}")
 st.caption(f"Amazon Bedrock Knowledge Base를 활용한 RAG 기반 채팅봇입니다. (현재 모델: {st.session_state.selected_model})")
@@ -132,51 +163,32 @@ if prompt := st.chat_input("질문을 입력하세요..."):
                 context_docs = [result["content"] for result in kb_results]
                 context = "\n\n".join(context_docs) if context_docs else ""
         
-        # 스트리밍 응답 생성
-        response_placeholder = st.empty()
-        full_response = ""
-        
-        for chunk in st.session_state.bedrock_rag.generate_response_stream(
-            prompt, 
-            context, 
-            max_tokens=st.session_state.max_tokens,
-            temperature=st.session_state.temperature,
-            top_p=st.session_state.top_p
-        ):
-            full_response += chunk
-            response_placeholder.markdown(full_response + "▌")
-        
-        response_placeholder.markdown(full_response)
-        
-        # 참고 문서 표시
+        # 검색 결과가 있을 때만 응답 생성
         if kb_results:
-            context_docs = [result["content"] for result in kb_results]
-            if context_docs:
-                with st.expander(f"📚 참고 문서 ({len(context_docs)}개)"):
-                    for i, result in enumerate(kb_results, 1):
-                        # 파일명 추출
-                        location = result.get('location', {})
-                        filename = "알 수 없는 파일"
-                        if location and 's3Location' in location:
-                            s3_uri = location['s3Location'].get('uri', '')
-                            if s3_uri:
-                                filename = s3_uri.split('/')[-1]
-                        
-                        st.write(f"**문서 {i}:** `{filename}`")
-                        doc_content = result["content"]
-                        st.write(doc_content[:300] + "..." if len(doc_content) > 300 else doc_content)
-                        st.divider()
+            # 스트리밍 응답 생성
+            response_placeholder = st.empty()
+            full_response = ""
             
-            # 인용 정보 표시
-            with st.expander("📖 인용 정보"):
-                for i, citation in enumerate(kb_results, 1):
-                    st.write(f"**인용 {i}:** (점수: {citation.get('score', 'N/A'):.3f})")
-                    location = citation.get('location', {})
-                    if location:
-                        st.write(f"출처: {location}")
-                    st.divider()
+            for chunk in st.session_state.bedrock_rag.generate_response_stream(
+                prompt, 
+                context, 
+                max_tokens=st.session_state.max_tokens,
+                temperature=st.session_state.temperature,
+                top_p=st.session_state.top_p
+            ):
+                full_response += chunk
+                response_placeholder.markdown(full_response + "▌")
+            
+            response_placeholder.markdown(full_response)
+            
+            # 참고 문서 및 인용 정보 표시
+            display_reference_documents(kb_results)
         else:
-            st.info("💡 환경 변수에서 KNOWLEDGE_BASE_ID를 설정하면 RAG 기능을 사용할 수 있습니다.")
+            full_response = "죄송합니다. 관련된 문서를 찾을 수 없어 답변을 드릴 수 없습니다. 다른 질문을 시도해 보세요."
+            st.markdown(full_response)
+            
+            if not st.session_state.bedrock_rag.knowledge_base_id:
+                st.info("💡 환경 변수에서 KNOWLEDGE_BASE_ID를 설정하면 RAG 기능을 사용할 수 있습니다.")
         
         response = full_response
     
