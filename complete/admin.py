@@ -92,7 +92,16 @@ if uploaded_files:
             progress_bar.progress((i + 1) / len(uploaded_files))
         
         # Knowledge Base 동기화
-
+        if uploaded_count > 0:
+            status_text.text("Knowledge Base 동기화 중...")
+            job_id = sync_knowledge_base(knowledge_base_id, data_source_id)
+            
+            if job_id:
+                st.success(f"🔄 Knowledge Base 동기화 시작됨 (Job ID: {job_id})")
+                st.info("동기화가 완료될 때까지 몇 분 정도 소요될 수 있습니다.")
+            else:
+                st.error("Knowledge Base 동기화 실패")
+        
         status_text.text("완료!")
 
 # 현재 상태 확인
