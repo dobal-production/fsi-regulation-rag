@@ -30,11 +30,9 @@ if is_admin:
     st.stop()
 
 # 모델 옵션 정의
-# "Claude Sonnet 4.6": "global.anthropic.claude-sonnet-4-6",
-# "Claude Haiku 4.5": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-# "Amazon Nova 2 Lite": "global.amazon.nova-2-lite-v1:0",
-# "Amazon Nova Pro": "apac.amazon.nova-pro-v1:0"
 MODEL_OPTIONS = {
+    # "Claude Sonnet 4.6": "",
+    # "Claude Haiku 4.5": "",
     "Amazon Nova 2 Lite": "global.amazon.nova-2-lite-v1:0"
 }
 

@@ -4,6 +4,8 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+from botocore.config import Config as BotocoreConfig
+from strands_tools.retrieve import filter_results_by_score
 
 load_dotenv()
 
@@ -36,10 +38,6 @@ class BedrockRAG:
         
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
-            region_name=self.region_name
-        )
-        self.bedrock_agent_runtime = boto3.client(
-            service_name="bedrock-agent-runtime",
             region_name=self.region_name
         )
     
@@ -109,13 +107,20 @@ class BedrockRAG:
             return []
         
         logger.info(f"문서 검색 시작: query='{query}', max_results={max_results}")
-            
+
         try:
-            response = self.bedrock_agent_runtime.retrieve(
+            # strands-agents 표준 user-agent를 포함한 Bedrock 클라이언트 생성
+            config = BotocoreConfig(user_agent_extra="strands-agents-retrieve")
+            client = boto3.client(
+                "bedrock-agent-runtime",
+                region_name=self.region_name,
+                config=config
+            )
+
+            # Knowledge Base에 벡터 유사도 검색 요청
+            response = client.retrieve(
                 knowledgeBaseId=self.knowledge_base_id,
-                retrievalQuery={
-                    "text": query
-                },
+                retrievalQuery={"text": query},
                 retrievalConfiguration={
                     "vectorSearchConfiguration": {
                         "numberOfResults": max_results
@@ -123,20 +128,23 @@ class BedrockRAG:
                 }
             )
 
-            # logger.info(response["retrievalResults"])
-            
-            results = []
-            for result in response["retrievalResults"]:
-                if result["score"] >= 0.4:
-                    results.append({
-                        "content": result["content"]["text"],
-                        "score": result["score"],
-                        "location": result.get("location", {})
-                    })
-            
+            # strands_tools의 filter_results_by_score로 유사도 0.4 미만 결과 제거
+            all_results = response.get("retrievalResults", [])
+            filtered = filter_results_by_score(all_results, min_score=0.4)
+
+            # app.py에서 사용하는 구조(content, score, location)로 변환
+            results = [
+                {
+                    "content": r["content"]["text"],
+                    "score": r["score"],
+                    "location": r.get("location", {})
+                }
+                for r in filtered
+            ]
+
             logger.info(f"문서 검색 완료: {len(results)}개 결과")
             return results
-            
+
         except Exception as e:
             logger.error(f"검색 오류: {str(e)}")
             return []
