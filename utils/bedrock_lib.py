@@ -123,7 +123,7 @@ class BedrockRAG:
                 }
             )
 
-            logger.info(response["retrievalResults"])
+            # logger.info(response["retrievalResults"])
             
             results = []
             for result in response["retrievalResults"]:
