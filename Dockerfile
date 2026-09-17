@@ -1,11 +1,10 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
 RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
@@ -19,9 +18,7 @@ COPY utils/ utils/
 
 EXPOSE 80
 
-HEALTHCHECK CMD curl --fail http://localhost/_stcore/health || exit 1
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#     CMD curl -f http://localhost:80/regulation/_stcore/health || exit 1
+HEALTHCHECK CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost/_stcore/health')" || exit 1
 
 CMD ["uv", "run", "streamlit", "run", "app.py", \
     "--logger.level", "info", \
