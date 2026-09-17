@@ -1,14 +1,17 @@
-FROM python:3.12-slim
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# musl 기반 Alpine 사용: glibc를 포함하지 않아 glibc 계열 CVE에 노출되지 않음
+FROM python:3.12-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apk upgrade --no-cache && apk add --no-cache curl
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-cache
+
+RUN uv sync --frozen --no-dev --no-cache
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY .env .
 COPY *.py .
